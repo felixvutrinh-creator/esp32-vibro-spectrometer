@@ -33,8 +33,11 @@ static esp_err_t i2c_master_init(void)
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = I2C_MASTER_FREQ_HZ,
     };
-    return i2c_param_config(I2C_MASTER_NUM, &conf);
-
+    esp_err_t err = i2c_param_config(I2C_MASTER_NUM, &conf);
+    if (err != ESP_OK) {
+        return err;
+    }
+    return i2c_driver_install(I2C_MASTER_NUM, I2C_MODE_MASTER, 0, 0, 0);
 }
 // Write register to MPU6050
 static esp_err_t mpu6050_write_reg(uint8_t reg, uint8_t data) 
@@ -42,3 +45,39 @@ static esp_err_t mpu6050_write_reg(uint8_t reg, uint8_t data)
     uint8_t write_buf[2] = {reg, data};
     return i2c_master_write_to_device(I2C_MASTER_NUM, MPU6050_ADDR, write_buf, sizeof(write_buf), pdMS_TO_TICKS(1000));
 }
+// I2C master read from MPU6050
+static esp_err_t mpu6050_read_bytes(uint8_t reg, uint8_t *data, size_t len) 
+{
+    return i2c_master_write_read_device(I2C_MASTER_NUM, MPU6050_ADDR, &reg, 1, data, len, pdMS_TO_TICKS(1000));
+}
+
+// I2C Scan
+static void i2c_scan() 
+{   
+    ESP_LOGI(TAG, "Scanning I2C bus...");
+    for (uint8_t addr = 1; addr < 127; addr++) 
+    {
+        i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+        i2c_master_start(cmd);
+        i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
+        i2c_master_stop(cmd);
+        esp_err_t ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, pdMS_TO_TICKS(1000));
+        i2c_cmd_link_delete(cmd);
+        if (ret == ESP_OK) 
+        {
+            ESP_LOGI(TAG, "Found device at address 0x%02X", addr);
+        
+         }
+}
+}
+
+// Main application
+void app_main(void)
+{
+    ESP_ERROR_CHECK(i2c_master_init());
+    while (1) {
+        i2c_scan();
+        vTaskDelay(pdMS_TO_TICKS(500)); // Scan every 5 seconds
+    }
+    
+}    
